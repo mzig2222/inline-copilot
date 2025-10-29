@@ -10,11 +10,12 @@ export default defineConfig({
       input: {
         content: 'src/content/main.tsx',
         worker: 'src/worker.ts',
+        popup: 'src/popup.tsx'
       },
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: 'chunks/[name].js',
-        assetFileNames: 'assets/[name][extname]',
+        assetFileNames: 'assets/[name][extname]'
       },
     },
   },

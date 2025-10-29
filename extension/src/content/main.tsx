@@ -35,7 +35,8 @@ function UI() {
     ensureShadow().appendChild(style);
   }, []);
 
-  const ask = () => {
+  const ask = async () => {
+    console.log("Asking:", input);
     if (!portRef.current) {
       portRef.current = chrome.runtime.connect({ name: "copilot" });
       portRef.current.onMessage.addListener((msg) => {
@@ -44,7 +45,13 @@ function UI() {
       });
     }
     setOut("");
-    portRef.current!.postMessage({ type: "ask", input });
+    // Get JWT from chrome.storage.local and attach to message (awaited, typed)
+    const result = await new Promise<{ jwt?: string }>((resolve) =>
+      chrome.storage.local.get(["jwt"], (items: { jwt?: string }) => resolve(items))
+    );
+    const jwt = result.jwt || "";
+    console.log("Using JWT:", jwt);
+    portRef.current!.postMessage({ type: "ask", input, jwt });
   };
 
   return (
@@ -67,7 +74,10 @@ function UI() {
 
 function mount() {
   const shadow = ensureShadow();
+  const prevMount = shadow.querySelector('div[data-copilot-mount]');
+  if (prevMount) prevMount.remove();
   const mountEl = document.createElement("div");
+  mountEl.setAttribute("data-copilot-mount", "true");
   shadow.appendChild(mountEl);
   (shadow as any).host.style.display = "none"; // start hidden
   createRoot(mountEl).render(<UI />);
@@ -79,13 +89,24 @@ function getTargetRect() {
   if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
     const range = sel.getRangeAt(0);
     const rect = range.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) return rect;
+    // Only return rect if selection is visible and not inside our own popup
+    if (rect.width > 0 && rect.height > 0 && rect.top > 0 && rect.left > 0) {
+      // Check if selection is inside Copilot popup
+      const host = document.getElementById(ROOT_ID);
+      if (host && host.contains(sel.anchorNode as Node)) return null;
+      return rect;
+    }
   }
   // Fallback: focused element
   const active = document.activeElement;
   if (active && (active instanceof HTMLElement)) {
     const rect = active.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) return rect;
+    // Only return rect if focused element is visible and not inside our own popup
+    if (rect.width > 0 && rect.height > 0 && rect.top > 0 && rect.left > 0) {
+      const host = document.getElementById(ROOT_ID);
+      if (host && host.contains(active)) return null;
+      return rect;
+    }
   }
   return null;
 }
@@ -114,11 +135,17 @@ chrome.runtime.onMessage.addListener((m) => {
     if (host.style.display === "none") {
       const rect = getTargetRect();
       if (rect) {
+        console.log('positioning popup near selection:', rect);
         positionPopup(host, rect);
       } else {
-        // fallback to default position
+        console.log('positioning popup in bottom right');
+        // Only set bottom right styles if no rect
         host.style.position = "fixed";
         host.style.inset = "auto 16px 16px auto";
+        host.style.top = "auto";
+        host.style.left = "auto";
+        host.style.right = "16px";
+        host.style.bottom = "16px";
       }
       host.style.display = "block";
     } else {

@@ -1,5 +1,4 @@
 // src/worker.ts
-
 async function ensureContentInjected(tabId: number) {
   try {
     await chrome.scripting.executeScript({
@@ -13,16 +12,25 @@ async function ensureContentInjected(tabId: number) {
 }
 
 chrome.commands.onCommand.addListener(async (cmd) => {
+  console.log('[Copilot] Command received:', cmd);
   if (cmd !== 'toggle-overlay') return;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) return;
+  if (!tab?.id || !tab.url) {
+    console.warn('[Copilot] No active tab found');
+    return;
+  }
+  if (
+    tab.url.startsWith('chrome://') ||
+    tab.url.startsWith('chrome-extension://') ||
+    tab.url.startsWith('about:')
+  ) {
+    console.warn('[Copilot] Cannot inject into restricted URL:', tab.url);
+    return;
+  }
 
   await ensureContentInjected(tab.id);
+  console.log('[Copilot] Sending TOGGLE message to tab', tab.id);
   chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE' });
-});
-
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('Inline Copilot installed');
 });
 
 chrome.runtime.onConnect.addListener((port) => {
@@ -34,7 +42,7 @@ chrome.runtime.onConnect.addListener((port) => {
       const resp = await fetch('http://localhost:3000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: msg.input }),
+        body: JSON.stringify({ input: msg.input, jwt: msg.jwt }),
       });
       const reader = resp.body?.getReader();
       if (!reader) return port.postMessage({ type: 'done', error: 'no stream' });

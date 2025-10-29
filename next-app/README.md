@@ -7,7 +7,9 @@ A minimal Next.js (App Router) server that exposes `/api/chat` and streams token
 1. `cd next-app`
 2. `cp .env.example .env.local` and set `OPENAI_API_KEY`
 3. `npm install`
-4. `npm run dev` (starts on http://localhost:3000)
+4. `npx prisma generate`
+5. `npx prisma migrate dev --name init`
+6. `npm run dev` (starts on http://localhost:3000)
 
 ## Endpoint
 - `POST /api/chat` with body `{ "input": "your prompt" }`
